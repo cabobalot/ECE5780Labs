@@ -68,6 +68,13 @@ void transmitString(char* str) {
 	}
 }
 
+static int dataReadyFlag = 0;
+static char charBuffer = 0;
+
+void USART3_4_IRQHandler() {
+	charBuffer = USART3->RDR;
+	dataReadyFlag = 1;
+}
 
 
 /* USER CODE END 0 */
@@ -133,6 +140,11 @@ int main(void)
 	// set baudrate 115200
 	USART3->BRR = HAL_RCC_GetHCLKFreq() / 115200;
 	
+	//enable recieve interrupt
+	USART3->CR1 |= USART_CR1_RXNEIE;
+	NVIC_EnableIRQ(USART3_4_IRQn);
+	NVIC_SetPriority(USART3_4_IRQn, 1);
+	
 	USART3->CR1 |= USART_CR1_TE;
 	USART3->CR1 |= USART_CR1_RE;
 	USART3->CR1 |= USART_CR1_UE;
@@ -177,37 +189,58 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+	
+	transmitString("\n\rCMD?");
   while (1)
   {
     /* USER CODE END WHILE */
 	
-		HAL_Delay(1); 
+		HAL_Delay(1);
 		
-		
-		
-		if (USART3->ISR & USART_ISR_RXNE_Msk) {
-			char c = USART3->RDR;
+		if (dataReadyFlag) {
+			char c = charBuffer;
+			transmitChar(c); //echo to prompt
 			
-			if (c == 'h') {
-				transmitString("Hello world");
+			//state machine state
+			static int chosenLED = 0;
+			
+			if (chosenLED == 0) { // first letter
+				if (c == 'r') {
+					chosenLED = 1;
+				}
+				else if (c == 'b') {
+					chosenLED = 2;
+				}
+				else if (c == 'o') {
+					chosenLED = 3;
+				}
+				else if (c == 'g') {
+					chosenLED = 4;
+				}
+				else {
+					transmitString("\n\rUnknown LED");
+					transmitString("\n\rCMD?");
+					chosenLED = 0;
+				}
 			}
-			else if (c == 'r') {
-				GPIOC->ODR ^= (GPIO_ODR_6);
-			}
-			else if (c == 'b') {
-				GPIOC->ODR ^= (GPIO_ODR_7);
-			}
-			else if (c == 'o') {
-				GPIOC->ODR ^= (GPIO_ODR_8);
-			}
-			else if (c == 'g') {
-				GPIOC->ODR ^= (GPIO_ODR_9);
-			}
-			else {
-				transmitString("error");
+			else { // seccond letter
+				if (c == '0') { //turn off
+					GPIOC->ODR &= ~(GPIO_ODR_6 << (chosenLED - 1));
+				}
+				else if (c == '1') { //turn on
+					GPIOC->ODR |= (GPIO_ODR_6 << (chosenLED - 1));
+				}
+				else if (c == '2') { //toggle
+					GPIOC->ODR ^= (GPIO_ODR_6 << (chosenLED - 1));
+				}
+				else {
+					transmitString("\n\rUnknown command");
+				}
+				transmitString("\n\rCMD?");
+				chosenLED = 0;
 			}
 			
-			
+			dataReadyFlag = 0;
 		}
 		
 		
