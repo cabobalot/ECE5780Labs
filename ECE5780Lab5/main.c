@@ -84,7 +84,7 @@ int main(void)
   /* Initialize all configured peripherals */
   /* USER CODE BEGIN 2 */
 
-  //Clock to GPIO B and C
+  // Clock to GPIO B and C
 	RCC->AHBENR |= RCC_AHBENR_GPIOBEN;
 	RCC->AHBENR |= RCC_AHBENR_GPIOCEN;
 	
@@ -125,18 +125,19 @@ int main(void)
 	GPIOC->ODR |= GPIO_ODR_0;
 	
 	
-	// choose alternate function 4
-	//pin 10
-	GPIOB->AFR[1] &= ~GPIO_AFRH_AFSEL10_Msk;
-	GPIOB->AFR[1] |= GPIO_AF4_USART3 << GPIO_AFRH_AFSEL10_Pos;
+	// RCC clock to I2C2
+	RCC->APB1ENR |= RCC_APB1ENR_I2C2EN;
 	
-	//pin 11
-	GPIOB->AFR[1] &= ~GPIO_AFRH_AFSEL11_Msk;
-	GPIOB->AFR[1] |= GPIO_AF4_USART3 << GPIO_AFRH_AFSEL11_Pos;
+	// Configure I2C timing for 100 kHz
+	I2C2->TIMINGR |= (0x1  << I2C_TIMINGR_PRESC_Pos);
+	I2C2->TIMINGR |= (0x13 << I2C_TIMINGR_SCLL_Pos);
+	I2C2->TIMINGR |= (0xF  << I2C_TIMINGR_SCLH_Pos);
+	I2C2->TIMINGR |= (0x2  << I2C_TIMINGR_SDADEL_Pos);
+	I2C2->TIMINGR |= (0x4  << I2C_TIMINGR_SCLDEL_Pos);
 	
+	// lastly, enable the I2C
+	I2C2->CR1 |= I2C_CR1_PE;
 	
-	
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
