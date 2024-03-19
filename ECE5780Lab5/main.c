@@ -53,6 +53,90 @@ void SystemClock_Config(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+
+static void enableLEDs() {
+	//LEDs
+	// turn on GPIO C clock
+	RCC->AHBENR |= RCC_AHBENR_GPIOCEN;
+	
+	// set push pull output
+	GPIOC->OTYPER &= ~GPIO_OTYPER_OT_6;
+	GPIOC->OTYPER &= ~GPIO_OTYPER_OT_7;
+	GPIOC->OTYPER &= ~GPIO_OTYPER_OT_8;
+	GPIOC->OTYPER &= ~GPIO_OTYPER_OT_9;
+	
+	// low speed
+	GPIOC->OSPEEDR &= ~GPIO_OSPEEDR_OSPEEDR6_Msk;
+	GPIOC->OSPEEDR &= ~GPIO_OSPEEDR_OSPEEDR7_Msk;
+	GPIOC->OSPEEDR &= ~GPIO_OSPEEDR_OSPEEDR8_Msk;
+	GPIOC->OSPEEDR &= ~GPIO_OSPEEDR_OSPEEDR9_Msk;
+	
+	// no pull resistors
+	GPIOC->PUPDR &= ~GPIO_PUPDR_PUPDR6_Msk;
+	GPIOC->PUPDR &= ~GPIO_PUPDR_PUPDR7_Msk;
+	GPIOC->PUPDR &= ~GPIO_PUPDR_PUPDR8_Msk;
+	GPIOC->PUPDR &= ~GPIO_PUPDR_PUPDR9_Msk;
+	
+	// Set output mode
+	GPIOC->MODER &= ~GPIO_MODER_MODER6_Msk;
+	GPIOC->MODER |= GPIO_MODER_MODER6_0;
+	
+	GPIOC->MODER &= ~GPIO_MODER_MODER7_Msk;
+	GPIOC->MODER |= GPIO_MODER_MODER7_0;
+	
+	GPIOC->MODER &= ~GPIO_MODER_MODER8_Msk;
+	GPIOC->MODER |= GPIO_MODER_MODER8_0;
+	
+	GPIOC->MODER &= ~GPIO_MODER_MODER9_Msk;
+	GPIOC->MODER |= GPIO_MODER_MODER9_0;
+}
+
+static void setRedLED(int val) {
+	GPIOC->ODR &= ~GPIO_ODR_6;
+	if (val) {
+		GPIOC->ODR |= GPIO_ODR_6;
+	}
+	
+}
+
+static void setBlueLED(int val) {
+	GPIOC->ODR &= ~GPIO_ODR_7;
+	if (val) {
+		GPIOC->ODR |= GPIO_ODR_7;
+	}
+}
+
+static void setOrangeLED(int val) {
+	GPIOC->ODR &= ~GPIO_ODR_8;
+	if (val) {
+		GPIOC->ODR |= GPIO_ODR_8;
+	}
+}
+
+static void setGreenLED(int val) {
+	GPIOC->ODR &= ~GPIO_ODR_9;
+	if (val) {
+		GPIOC->ODR |= GPIO_ODR_9;
+	}
+}
+
+static void toggleRedLED() {
+	GPIOC->ODR ^= GPIO_ODR_6;
+}
+
+static void toggleBlueLED() {
+	GPIOC->ODR ^= GPIO_ODR_7;
+}
+
+static void toggleOrangeLED() {
+	GPIOC->ODR ^= GPIO_ODR_8;
+}
+
+static void toggleGreenLED() {
+	GPIOC->ODR ^= GPIO_ODR_9;
+}
+
+
 /* USER CODE END 0 */
 
 /**
@@ -138,6 +222,9 @@ int main(void)
 	// lastly, enable the I2C
 	I2C2->CR1 |= I2C_CR1_PE;
 	
+	enableLEDs();
+	
+	
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -145,8 +232,42 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-
     /* USER CODE BEGIN 3 */
+		
+		setBlueLED(1);
+		
+		I2C2->CR2 = 0;
+		
+		// set send address
+		I2C2->CR2 |= (0x69 << 1) << I2C_CR2_SADD_Pos;
+		// Send 1 byte
+		I2C2->CR2 |= (1) << I2C_CR2_NBYTES_Pos;
+		// write operation
+		I2C2->CR2 &= ~I2C_CR2_RD_WRN_Msk;
+		// set start bit
+		I2C2->CR2 |= I2C_CR2_START;
+		
+		// wait for send to complete
+		while (!(I2C2->ISR & I2C_ISR_TXIS_Msk) && !(I2C2->ISR & I2C_ISR_NACKF_Msk));
+		if (I2C2->ISR & I2C_ISR_NACKF_Msk) {
+			// NACK
+			setRedLED(1);
+			I2C2->ICR |= I2C_ICR_NACKCF;
+		}
+		else if (I2C2->ISR & I2C_ISR_TXIS_Msk) {
+			// transmission good
+			setGreenLED(1);
+			I2C2->TXDR = 0xF;
+		}
+			
+			
+		HAL_Delay(1000);
+		
+		setBlueLED(0);
+		setRedLED(0);
+		setGreenLED(0);
+		
+		HAL_Delay(1000);
   }
   /* USER CODE END 3 */
 }
