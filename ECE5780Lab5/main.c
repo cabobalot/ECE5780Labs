@@ -91,14 +91,15 @@ static void enableLEDs() {
 	GPIOC->MODER |= GPIO_MODER_MODER9_0;
 }
 
+__attribute__((unused))
 static void setRedLED(int val) {
 	GPIOC->ODR &= ~GPIO_ODR_6;
 	if (val) {
 		GPIOC->ODR |= GPIO_ODR_6;
 	}
-	
 }
 
+__attribute__((unused))
 static void setBlueLED(int val) {
 	GPIOC->ODR &= ~GPIO_ODR_7;
 	if (val) {
@@ -106,6 +107,7 @@ static void setBlueLED(int val) {
 	}
 }
 
+__attribute__((unused))
 static void setOrangeLED(int val) {
 	GPIOC->ODR &= ~GPIO_ODR_8;
 	if (val) {
@@ -113,6 +115,7 @@ static void setOrangeLED(int val) {
 	}
 }
 
+__attribute__((unused))
 static void setGreenLED(int val) {
 	GPIOC->ODR &= ~GPIO_ODR_9;
 	if (val) {
@@ -120,18 +123,22 @@ static void setGreenLED(int val) {
 	}
 }
 
+__attribute__((unused))
 static void toggleRedLED() {
 	GPIOC->ODR ^= GPIO_ODR_6;
 }
 
+__attribute__((unused))
 static void toggleBlueLED() {
 	GPIOC->ODR ^= GPIO_ODR_7;
 }
 
+__attribute__((unused))
 static void toggleOrangeLED() {
 	GPIOC->ODR ^= GPIO_ODR_8;
 }
 
+__attribute__((unused))
 static void toggleGreenLED() {
 	GPIOC->ODR ^= GPIO_ODR_9;
 }
@@ -257,7 +264,40 @@ int main(void)
 		else if (I2C2->ISR & I2C_ISR_TXIS_Msk) {
 			// transmission good
 			setGreenLED(1);
-			I2C2->TXDR = 0xF;
+			
+			//request WHO_AM_I address
+			I2C2->TXDR = 0x0F;
+			while (!(I2C2->ISR & I2C_ISR_TC_Msk));
+			setGreenLED(0);
+			
+			// set send address
+			I2C2->CR2 |= (0x69 << 1) << I2C_CR2_SADD_Pos;
+			// read 1 byte
+			I2C2->CR2 |= (1) << I2C_CR2_NBYTES_Pos;
+			// read operation
+			I2C2->CR2 |= I2C_CR2_RD_WRN;
+			// set start bit
+			I2C2->CR2 |= I2C_CR2_START;
+			
+			// wait for read to complete
+			while (!(I2C2->ISR & I2C_ISR_RXNE_Msk) && !(I2C2->ISR & I2C_ISR_NACKF_Msk));
+			if (I2C2->ISR & I2C_ISR_NACKF_Msk) {
+				// NACK
+				setRedLED(1);
+				I2C2->ICR |= I2C_ICR_NACKCF;
+			}
+			else {
+				// transfer good
+				setGreenLED(1);
+				uint16_t data = I2C2->RXDR;
+				while (!(I2C2->ISR & I2C_ISR_TC_Msk));
+				I2C2->CR2 |= I2C_CR2_STOP;
+				
+				if (data == 0xD3) {
+					setOrangeLED(1);
+				}
+			}
+			
 		}
 			
 			
@@ -266,6 +306,7 @@ int main(void)
 		setBlueLED(0);
 		setRedLED(0);
 		setGreenLED(0);
+		setOrangeLED(0);
 		
 		HAL_Delay(1000);
   }
