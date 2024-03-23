@@ -143,6 +143,98 @@ static void toggleGreenLED() {
 	GPIOC->ODR ^= GPIO_ODR_9;
 }
 
+static uint8_t sendI2CBytes(uint8_t address, uint8_t numBytes, uint8_t* data) {
+	I2C2->CR2 = 0;
+	
+	// set send address
+	I2C2->CR2 |= (address << 1) << I2C_CR2_SADD_Pos;
+	// Send 1 byte
+	I2C2->CR2 |= (numBytes) << I2C_CR2_NBYTES_Pos;
+	// write operation
+	I2C2->CR2 &= ~I2C_CR2_RD_WRN_Msk;
+	// set start bit
+	I2C2->CR2 |= I2C_CR2_START;
+	
+	// wait for send to complete
+	while (!(I2C2->ISR & I2C_ISR_TXIS_Msk) && !(I2C2->ISR & I2C_ISR_NACKF_Msk));
+	if (I2C2->ISR & I2C_ISR_NACKF_Msk) {
+		// NACK
+		I2C2->ICR |= I2C_ICR_NACKCF;
+		
+		return 0;
+	}
+	
+	// send bytes
+	for (size_t i = 0; i < numBytes; i++) {
+		while (!(I2C2->ISR & I2C_ISR_TXE_Msk));
+		I2C2->TXDR = data[i];
+	}
+	// wait for transfer complete
+	while (!(I2C2->ISR & I2C_ISR_TC_Msk));
+	
+	return 1;
+}
+
+static uint8_t readI2CBytes(uint8_t address, uint8_t numBytes, uint8_t* data) {
+	I2C2->CR2 = 0;
+	// set send address again
+	I2C2->CR2 |= (address << 1) << I2C_CR2_SADD_Pos;
+	// read 1 byte
+	I2C2->CR2 |= (numBytes) << I2C_CR2_NBYTES_Pos;
+	// read operation
+	I2C2->CR2 |= I2C_CR2_RD_WRN;
+	// set start bit for restart condition
+	I2C2->CR2 |= I2C_CR2_START;
+	
+	// wait for read request to complete
+	while (!(I2C2->ISR & I2C_ISR_RXNE_Msk) && !(I2C2->ISR & I2C_ISR_NACKF_Msk));
+	if (I2C2->ISR & I2C_ISR_NACKF_Msk) {
+		// NACK
+		I2C2->ICR |= I2C_ICR_NACKCF;
+		
+		return 0;
+	}
+	
+	// transfer good, read data
+	for (size_t i = 0; i < numBytes; i++) {
+		while (!(I2C2->ISR & I2C_ISR_RXNE_Msk));
+		data[i] = I2C2->RXDR;
+	}
+	
+	// wait for transfer complete
+	while (!(I2C2->ISR & I2C_ISR_TC_Msk));
+	
+	return 1;
+}
+
+static void sendI2CStop() {
+	I2C2->CR2 |= I2C_CR2_STOP;
+}
+
+/** send the request of a register to read from device at address, 
+  * then read numBytes from that register into data
+  */
+static uint8_t sendI2CQuery(uint8_t address, uint8_t request, uint8_t numBytes, uint8_t* data) {
+	if (!sendI2CBytes(address, 1, &request)) {
+		return 0;
+	}
+	
+	if (!readI2CBytes(address, numBytes, data)) {
+		return 0;
+	}
+	
+	sendI2CStop();
+	return 1;
+}
+
+
+static int16_t applyDeadband(int16_t value, int16_t deadband) {
+	if ((value < deadband) && (value > -deadband)) {
+		return 0;
+	}
+	
+	return value;
+}
 
 /* USER CODE END 0 */
 
@@ -230,7 +322,45 @@ int main(void)
 	I2C2->CR1 |= I2C_CR1_PE;
 	
 	enableLEDs();
+	setRedLED(1);
 	
+	const uint8_t GYRO_ADDR = 0x69;
+	const uint8_t X_ADDR = 0x28;
+	const uint8_t Y_ADDR = 0x2A;
+	
+	// check the who am I of the gyro
+	uint8_t data = 0;
+	if (!sendI2CQuery(GYRO_ADDR, 0x0F, 1, &data)) {
+		setRedLED(1);
+		while(1);
+	}
+	else {
+		if (data == 0xD3) {
+			setOrangeLED(1);
+			HAL_Delay(200);
+			toggleOrangeLED();
+			HAL_Delay(200);
+			toggleOrangeLED();
+			HAL_Delay(200);
+			toggleOrangeLED();
+		}
+	}
+	
+	
+	// control register set on, and X and Y axis
+	uint8_t ctlRegbytes[2] = {0x20, 0x0B};
+	if (!sendI2CBytes(GYRO_ADDR, 2, ctlRegbytes)) {
+		setRedLED(1);
+		while(1);
+	}
+	sendI2CStop();
+	
+	
+	uint8_t XBytes[2] = {0, 0};
+	int16_t Xval = 0;
+	
+	uint8_t YBytes[2] = {0, 0};
+	int16_t Yval = 0;
 	
   /* USER CODE END 2 */
 
@@ -241,74 +371,47 @@ int main(void)
     /* USER CODE END WHILE */
     /* USER CODE BEGIN 3 */
 		
-		setBlueLED(1);
+		HAL_Delay(100);
 		
-		I2C2->CR2 = 0;
-		
-		// set send address
-		I2C2->CR2 |= (0x69 << 1) << I2C_CR2_SADD_Pos;
-		// Send 1 byte
-		I2C2->CR2 |= (1) << I2C_CR2_NBYTES_Pos;
-		// write operation
-		I2C2->CR2 &= ~I2C_CR2_RD_WRN_Msk;
-		// set start bit
-		I2C2->CR2 |= I2C_CR2_START;
-		
-		// wait for send to complete
-		while (!(I2C2->ISR & I2C_ISR_TXIS_Msk) && !(I2C2->ISR & I2C_ISR_NACKF_Msk));
-		if (I2C2->ISR & I2C_ISR_NACKF_Msk) {
-			// NACK
+		if (!sendI2CQuery(GYRO_ADDR, X_ADDR | 0x80, 2, XBytes)) {
 			setRedLED(1);
-			I2C2->ICR |= I2C_ICR_NACKCF;
+			HAL_Delay(1000);
+			setRedLED(0);
 		}
-		else if (I2C2->ISR & I2C_ISR_TXIS_Msk) {
-			// transmission good
-			setGreenLED(1);
-			
-			//request WHO_AM_I address
-			I2C2->TXDR = 0x0F;
-			while (!(I2C2->ISR & I2C_ISR_TC_Msk));
-			setGreenLED(0);
-			
-			// set send address
-			I2C2->CR2 |= (0x69 << 1) << I2C_CR2_SADD_Pos;
-			// read 1 byte
-			I2C2->CR2 |= (1) << I2C_CR2_NBYTES_Pos;
-			// read operation
-			I2C2->CR2 |= I2C_CR2_RD_WRN;
-			// set start bit
-			I2C2->CR2 |= I2C_CR2_START;
-			
-			// wait for read to complete
-			while (!(I2C2->ISR & I2C_ISR_RXNE_Msk) && !(I2C2->ISR & I2C_ISR_NACKF_Msk));
-			if (I2C2->ISR & I2C_ISR_NACKF_Msk) {
-				// NACK
-				setRedLED(1);
-				I2C2->ICR |= I2C_ICR_NACKCF;
-			}
-			else {
-				// transfer good
-				setGreenLED(1);
-				uint16_t data = I2C2->RXDR;
-				while (!(I2C2->ISR & I2C_ISR_TC_Msk));
-				I2C2->CR2 |= I2C_CR2_STOP;
-				
-				if (data == 0xD3) {
-					setOrangeLED(1);
-				}
-			}
-			
-		}
-			
-			
-		HAL_Delay(1000);
-		
-		setBlueLED(0);
-		setRedLED(0);
+		Xval = (XBytes[1] << 8) | XBytes[0];
+		Xval = applyDeadband(Xval, 500);
+		// orange and green on X axis
 		setGreenLED(0);
 		setOrangeLED(0);
+		if (Xval < 0) {
+			setOrangeLED(1);
+		}
+		else if (Xval > 0){
+			setGreenLED(1);
+		}
 		
-		HAL_Delay(1000);
+		
+		if (!sendI2CQuery(GYRO_ADDR, Y_ADDR | 0x80, 2, YBytes)) {
+			setRedLED(1);
+			HAL_Delay(1000);
+			setRedLED(0);
+		}
+		Yval = (YBytes[1] << 8) | YBytes[0];
+		Yval = applyDeadband(Yval, 500);
+		// blue and red on Y axis
+		setRedLED(0);
+		setBlueLED(0);
+		if (Yval < 0) {
+			setBlueLED(1);
+		}
+		else if (Yval > 0) {
+			setRedLED(1);
+		}
+		
+			
+			
+		
+		
   }
   /* USER CODE END 3 */
 }
