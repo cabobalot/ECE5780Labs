@@ -163,7 +163,19 @@ void initADC() {
 	ADC1->CR |= ADC_CR_ADSTART;
 	
 	setOrangeLED(0);
+}
+
+void initDAC() {
+	RCC->APB1ENR |= RCC_APB1ENR_DACEN;
+	RCC->AHBENR |= RCC_AHBENR_GPIOAEN;
 	
+	// A4 is DAC_OUT1
+	GPIOA->MODER |= GPIO_MODER_MODER4_Msk;
+	
+	// software trigger
+	DAC->CR |= DAC_CR_TSEL1_Msk;
+	
+	DAC->CR |= DAC_CR_EN1;
 	
 }
 
@@ -213,8 +225,10 @@ int main(void)
 	
 	initADC();
 	
+	initDAC();
 	
-	
+	const uint8_t sine_table[32] = {127,151,175,197,216,232,244,251,254,251,244,232,216,197,175,151,127,102,78,56,37,21,9,2,0,2,9,21,37,56,78,102};
+	uint8_t waveIdx = 0;
 
   /* USER CODE END 2 */
 
@@ -244,7 +258,14 @@ int main(void)
 			setGreenLED(1);
 		}
 		
-		HAL_Delay(20);
+		DAC->DHR8R1 = sine_table[waveIdx];
+		DAC->SWTRIGR |= DAC_SWTRIGR_SWTRIG1;
+		
+		waveIdx++;
+		if (waveIdx > 31) {
+			waveIdx = 0;
+		}
+		HAL_Delay(1);
 		
     /* USER CODE BEGIN 3 */
   }
